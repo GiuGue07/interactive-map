@@ -18,7 +18,7 @@ http://localhost:3000
 ## Accesso iniziale
 
 - Username: `admin`
-- Password: `admin123`
+- Password: `Bk751pt03021977`
 
 Cambia questa password prima di pubblicare il sito online.
 
