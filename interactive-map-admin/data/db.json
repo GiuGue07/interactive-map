@@ -1,0 +1,52 @@
+{
+  "users": [
+    {
+      "id": "1c55285b-b463-42f1-ab72-a7da843deed8",
+      "username": "admin",
+      "passwordHash": "2fc2d2ee80160e16c0df9f30cb0ea521:f237a8fa4cf50c1218526ba19997fb47e49a73f49a609f514785b9b93358225c35acf2b598b5bbe771d3636bddf7a3a9359249a629bf186ded3c0015c7158e79",
+      "role": "admin",
+      "status": "approved",
+      "createdAt": "2026-05-24T02:01:22.886Z",
+      "lastLoginAt": "2026-05-24T02:51:15.156Z",
+      "lastIp": "::1"
+    }
+  ],
+  "points": [
+    {
+      "id": "93b2387c-5c54-47ab-9eba-50b0a9fefb8e",
+      "name": "Tricolor",
+      "description": "Trottatore Del Norfolk",
+      "lat": 1717,
+      "lng": 2141,
+      "color": "#d8a021",
+      "createdAt": "2026-05-24T02:45:48.227Z",
+      "updatedAt": "2026-05-24T02:45:48.227Z"
+    }
+  ],
+  "sessions": {
+    "25eea109fa124a9747d3705f8b557f7a6054e1ebefa33dfb4d561402722b0999": {
+      "userId": "1c55285b-b463-42f1-ab72-a7da843deed8",
+      "expiresAt": 1779631761655
+    },
+    "0413ee5817cb537ba0305c75346f7c362bfd8f2ee5376680501d3c6287d0b263": {
+      "userId": "1c55285b-b463-42f1-ab72-a7da843deed8",
+      "expiresAt": 1779631791850
+    },
+    "5b531a283b4dc621d2eb0d27594ba41cc30d38106375e28425fd8a5127038ccc": {
+      "userId": "1c55285b-b463-42f1-ab72-a7da843deed8",
+      "expiresAt": 1779631837340
+    },
+    "61c9797e58e845f2277dd67913324f88900141dec3f9ed8f10a0359a9af08a75": {
+      "userId": "1c55285b-b463-42f1-ab72-a7da843deed8",
+      "expiresAt": 1779631959568
+    },
+    "4dff29102bf83705b2d3965f10913c623fba0ecd42056675fecf7367fdd01ad8": {
+      "userId": "1c55285b-b463-42f1-ab72-a7da843deed8",
+      "expiresAt": 1779632182233
+    },
+    "155d4d97b9661618680b62e802117cd11f2cc0807563dc458861ecb2c9e3e29a": {
+      "userId": "1c55285b-b463-42f1-ab72-a7da843deed8",
+      "expiresAt": 1779634275159
+    }
+  }
+}

@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Mappa Admin</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIINfQK8fQ9cc3ppdD0q2vKNH9N2s0U7f3Q=" crossorigin="">
+    <link rel="stylesheet" href="/styles.css?v=9">
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="auth-view" id="authView">
+        <div class="brand-block">
+          <p class="eyebrow">Accesso protetto</p>
+          <h1>Mappa interattiva</h1>
+          <p>Gli utenti registrati restano in attesa finche l'amministratore non approva l'accesso.</p>
+        </div>
+
+        <div class="auth-panel">
+          <div class="tabs" role="tablist" aria-label="Accesso">
+            <button class="tab active" id="loginTab" type="button">Login</button>
+            <button class="tab" id="registerTab" type="button">Registrazione</button>
+          </div>
+
+          <form id="loginForm" class="stack">
+            <label>Username<input name="username" autocomplete="username" required></label>
+            <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+            <button type="submit" class="primary">Entra</button>
+          </form>
+
+          <form id="registerForm" class="stack hidden">
+            <label>Username<input name="username" autocomplete="username" minlength="3" required></label>
+            <label>Password<input name="password" type="password" autocomplete="new-password" minlength="6" required></label>
+            <button type="submit" class="primary">Richiedi accesso</button>
+          </form>
+
+          <p class="message" id="authMessage" aria-live="polite"></p>
+        </div>
+      </section>
+
+      <section class="map-view hidden" id="mapView">
+        <aside class="sidebar">
+          <div class="sidebar-header">
+            <div>
+              <p class="eyebrow">Dashboard</p>
+              <h2 id="welcomeTitle">Mappa</h2>
+            </div>
+            <button id="logoutBtn" type="button" class="icon-button" title="Esci">⎋</button>
+          </div>
+
+          <section class="admin-only panel hidden" id="pointPanel">
+            <h3>Punti mappa</h3>
+            <form id="pointForm" class="stack compact">
+              <input type="hidden" name="id">
+              <label>Nome<input name="name" maxlength="80" required></label>
+              <label>Descrizione<textarea name="description" rows="3"></textarea></label>
+              <label>Rarità
+                <select name="color" required>
+                  <option value="#2e9d57">Comune - verde</option>
+                  <option value="#2878d8">Raro - blu</option>
+                  <option value="#7b3fb8">Epico - viola</option>
+                  <option value="#d8a021">Leggendario - oro</option>
+                  <option value="#c43b3b">Unico - rosso</option>
+                </select>
+              </label>
+              <div class="grid-2">
+                <label>Y immagine<input name="lat" type="number" step="any" min="0" max="3340" required></label>
+                <label>X immagine<input name="lng" type="number" step="any" min="0" max="4505" required></label>
+              </div>
+              <div class="actions">
+                <button type="submit" class="primary">Salva punto</button>
+                <button type="button" id="resetPointBtn">Nuovo</button>
+              </div>
+            </form>
+            <p class="hint">Clicca sulla mappa per compilare le coordinate X/Y.</p>
+          </section>
+
+          <section class="panel">
+            <h3>Elenco punti</h3>
+            <div class="filters">
+              <label>Nome punto<input id="pointNameFilter" type="search" placeholder="Cerca punto"></label>
+              <label>Rarità
+                <select id="pointRarityFilter">
+                  <option value="">Tutte</option>
+                  <option value="#2e9d57">Comune</option>
+                  <option value="#2878d8">Raro</option>
+                  <option value="#7b3fb8">Epico</option>
+                  <option value="#d8a021">Leggendario</option>
+                  <option value="#c43b3b">Unico</option>
+                </select>
+              </label>
+            </div>
+            <div class="list" id="pointsList"></div>
+          </section>
+
+          <section class="admin-only panel hidden" id="usersPanel">
+            <h3>Lista utenti</h3>
+            <div class="list users" id="usersList"></div>
+          </section>
+        </aside>
+
+        <div class="map-wrap">
+          <div id="map"></div>
+        </div>
+      </section>
+    </main>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="/app.js?v=9"></script>
+  </body>
+</html>

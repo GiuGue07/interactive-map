@@ -1,0 +1,13 @@
+{
+  "name": "interactive-map-admin",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Mappa interattiva con login, approvazione utenti e gestione punti.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
