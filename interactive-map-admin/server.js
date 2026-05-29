@@ -3,10 +3,9 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { URL } = require("url");
+const { MongoClient } = require("mongodb"); // Importiamo il driver MongoDB
 
 const PORT = Number(process.env.PORT || 3000);
-const DATA_DIR = path.join(__dirname, "data");
-const DB_FILE = path.join(DATA_DIR, "db.json");
 const PUBLIC_DIR = path.join(__dirname, "public");
 const SESSION_TTL_MS = 1000 * 60 * 60 * 12;
 const ALLOWED_POINT_COLORS = new Set(["#2e9d57", "#2878d8", "#7b3fb8", "#d8a021", "#c43b3b"]);
@@ -23,47 +22,58 @@ const MIME_TYPES = {
   ".ico": "image/x-icon"
 };
 
-function ensureDb() {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  if (!fs.existsSync(DB_FILE)) {
-    const adminPassword = hashPassword("admin123");
-    writeDb({
-      users: [
-        {
-          id: crypto.randomUUID(),
-          username: "admin",
-          passwordHash: adminPassword,
-          role: "admin",
-          status: "approved",
-          createdAt: new Date().toISOString(),
-          lastLoginAt: null,
-          lastIp: null
-        }
-      ],
-      points: [
-        {
-          id: crypto.randomUUID(),
-          name: "Valentine",
-          description: "Punto demo sulla mappa personalizzata.",
-          lat: 1150,
-          lng: 2700,
-          color: "#2878d8",
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        }
-      ],
-      sessions: {}
-    });
+// --- CONFIGURAZIONE MONGODB ---
+const MONGO_URI = process.env.MONGO_URI; 
+if (!MONGO_URI) {
+  console.error("ERRORE: La variabile d'ambiente MONGO_URI non è configurata!");
+  process.exit(1);
+}
+
+const client = new MongoClient(MONGO_URI);
+let db;
+
+// Funzione per inizializzare il Database e l'admin se non esistono
+async function initDb() {
+  try {
+    await client.connect();
+    db = client.db("interactive-map"); // Nome del database su Atlas
+    console.log("Connesso con successo a MongoDB Atlas!");
+
+    // Controlla se esiste l'utente admin, altrimenti lo crea
+    const adminExists = await db.collection("users").findOne({ username: "admin" });
+    if (!adminExists) {
+      const adminPassword = hashPassword("admin123");
+      await db.collection("users").insertOne({
+        id: crypto.randomUUID(),
+        username: "admin",
+        passwordHash: adminPassword,
+        role: "admin",
+        status: "approved",
+        createdAt: new Date().toISOString(),
+        lastLoginAt: null,
+        lastIp: null
+      });
+      console.log("Utente Admin iniziale creato su MongoDB.");
+    }
+
+    // Controlla se ci sono punti demo, altrimenti ne mette uno
+    const pointsCount = await db.collection("points").countDocuments();
+    if (pointsCount === 0) {
+      await db.collection("points").insertOne({
+        id: crypto.randomUUID(),
+        name: "Valentine",
+        description: "Punto demo sulla mappa personalizzata.",
+        lat: 1150,
+        lng: 2700,
+        color: "#2878d8",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+    }
+  } catch (err) {
+    console.error("Errore critico durante l'inizializzazione di MongoDB:", err);
+    process.exit(1);
   }
-}
-
-function readDb() {
-  ensureDb();
-  return JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
-}
-
-function writeDb(db) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
 }
 
 function hashPassword(password, salt = crypto.randomBytes(16).toString("hex")) {
@@ -104,16 +114,18 @@ function clearSessionCookie(res) {
   res.setHeader("Set-Cookie", "map_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0");
 }
 
-function getCurrentUser(req, db) {
+async function getCurrentUser(req) {
   const token = parseCookies(req).map_session;
-  if (!token || !db.sessions[token]) return null;
-  const session = db.sessions[token];
+  if (!token) return null;
+  
+  const session = await db.collection("sessions").findOne({ token });
+  if (!session) return null;
+
   if (Date.now() > session.expiresAt) {
-    delete db.sessions[token];
-    writeDb(db);
+    await db.collection("sessions").deleteOne({ token });
     return null;
   }
-  return db.users.find((user) => user.id === session.userId) || null;
+  return await db.collection("users").findOne({ id: session.userId }) || null;
 }
 
 function json(res, status, body) {
@@ -146,24 +158,19 @@ function readBody(req) {
   });
 }
 
-function pruneExpiredSessions(db) {
+async function pruneExpiredSessions() {
   const now = Date.now();
-  let changed = false;
-  for (const [token, session] of Object.entries(db.sessions || {})) {
-    if (!session || now > session.expiresAt) {
-      delete db.sessions[token];
-      changed = true;
-    }
-  }
-  if (changed) writeDb(db);
+  await db.collection("sessions").deleteMany({ expiresAt: { $lt: now } });
 }
 
-function isUserOnline(db, userId) {
+async function isUserOnline(userId) {
   const now = Date.now();
-  return Object.values(db.sessions || {}).some((session) => session.userId === userId && now <= session.expiresAt);
+  const activeSession = await db.collection("sessions").findOne({ userId, expiresAt: { $gte: now } });
+  return !!activeSession;
 }
 
-function publicUser(user, db = null) {
+async function publicUser(user) {
+  const online = await isUserOnline(user.id);
   return {
     id: user.id,
     username: user.username,
@@ -172,12 +179,12 @@ function publicUser(user, db = null) {
     createdAt: user.createdAt,
     lastLoginAt: user.lastLoginAt,
     lastIp: user.lastIp,
-    online: db ? isUserOnline(db, user.id) : false
+    online: online
   };
 }
 
-function requireAuth(req, res, db) {
-  const user = getCurrentUser(req, db);
+async function requireAuth(req, res) {
+  const user = await getCurrentUser(req);
   if (!user) {
     error(res, 401, "Accesso richiesto");
     return null;
@@ -189,8 +196,8 @@ function requireAuth(req, res, db) {
   return user;
 }
 
-function requireAdmin(req, res, db) {
-  const user = requireAuth(req, res, db);
+async function requireAdmin(req, res) {
+  const user = await requireAuth(req, res);
   if (!user) return null;
   if (user.role !== "admin") {
     error(res, 403, "Solo l'amministratore puo eseguire questa operazione");
@@ -219,12 +226,11 @@ function serveStatic(req, res, pathname) {
 }
 
 async function handleApi(req, res, pathname) {
-  const db = readDb();
-  pruneExpiredSessions(db);
+  await pruneExpiredSessions();
 
   if (req.method === "GET" && pathname === "/api/me") {
-    const user = getCurrentUser(req, db);
-    json(res, 200, { user: user ? publicUser(user, db) : null });
+    const user = await getCurrentUser(req);
+    json(res, 200, { user: user ? await publicUser(user) : null });
     return;
   }
 
@@ -234,7 +240,10 @@ async function handleApi(req, res, pathname) {
     const password = String(body.password || "");
     if (!/^[a-z0-9._-]{3,24}$/.test(username)) return error(res, 400, "Username non valido");
     if (password.length < 6) return error(res, 400, "Password troppo corta");
-    if (db.users.some((user) => user.username === username)) return error(res, 409, "Username gia registrato");
+    
+    const userExists = await db.collection("users").findOne({ username });
+    if (userExists) return error(res, 409, "Username gia registrato");
+    
     const user = {
       id: crypto.randomUUID(),
       username,
@@ -245,9 +254,8 @@ async function handleApi(req, res, pathname) {
       lastLoginAt: null,
       lastIp: getClientIp(req)
     };
-    db.users.push(user);
-    writeDb(db);
-    json(res, 201, { message: "Registrazione inviata. Attendi approvazione admin.", user: publicUser(user, db) });
+    await db.collection("users").insertOne(user);
+    json(res, 201, { message: "Registrazione inviata. Attendi approvazione admin.", user: await publicUser(user) });
     return;
   }
 
@@ -255,88 +263,107 @@ async function handleApi(req, res, pathname) {
     const body = await readBody(req);
     const username = String(body.username || "").trim().toLowerCase();
     const password = String(body.password || "");
-    const user = db.users.find((item) => item.username === username);
+    
+    const user = await db.collection("users").findOne({ username });
     if (!user || !verifyPassword(password, user.passwordHash)) return error(res, 401, "Credenziali non valide");
-    user.lastIp = getClientIp(req);
-    user.lastLoginAt = new Date().toISOString();
+    
+    const lastIp = getClientIp(req);
+    const lastLoginAt = new Date().toISOString();
+    await db.collection("users").updateOne({ id: user.id }, { $set: { lastIp, lastLoginAt } });
+    
     if (user.status !== "approved") {
-      writeDb(db);
       return error(res, 403, "Account in attesa di approvazione admin");
     }
+    
     const token = crypto.randomBytes(32).toString("hex");
-    db.sessions[token] = { userId: user.id, expiresAt: Date.now() + SESSION_TTL_MS };
-    writeDb(db);
+    await db.collection("sessions").insertOne({ token, userId: user.id, expiresAt: Date.now() + SESSION_TTL_MS });
+    
     setSessionCookie(res, token);
-    json(res, 200, { user: publicUser(user, db) });
+    json(res, 200, { user: await publicUser({ ...user, lastIp, lastLoginAt }) });
     return;
   }
 
   if (req.method === "POST" && pathname === "/api/logout") {
     const token = parseCookies(req).map_session;
-    if (token) delete db.sessions[token];
-    writeDb(db);
+    if (token) await db.collection("sessions").deleteOne({ token });
     clearSessionCookie(res);
     json(res, 200, { ok: true });
     return;
   }
 
   if (req.method === "GET" && pathname === "/api/points") {
-    if (!requireAuth(req, res, db)) return;
-    json(res, 200, { points: db.points });
+    if (!await requireAuth(req, res)) return;
+    const points = await db.collection("points").find({}, { projection: { _id: 0 } }).toArray();
+    json(res, 200, { points });
     return;
   }
 
   if (req.method === "POST" && pathname === "/api/points") {
-    if (!requireAdmin(req, res, db)) return;
+    if (!await requireAdmin(req, res)) return;
     const body = await readBody(req);
     const point = validatePoint(body);
     if (point.error) return error(res, 400, point.error);
     const now = new Date().toISOString();
     const created = { id: crypto.randomUUID(), ...point.value, createdAt: now, updatedAt: now };
-    db.points.push(created);
-    writeDb(db);
-    json(res, 201, { point: created });
+    
+    await db.collection("points").insertOne(created);
+    const responsePoint = { ...created };
+    delete responsePoint._id; // Rimuoviamo l'id interno di Mongo per il frontend
+    
+    json(res, 201, { point: responsePoint });
     return;
   }
 
   const pointMatch = pathname.match(/^\/api\/points\/([^/]+)$/);
   if (pointMatch && req.method === "PUT") {
-    if (!requireAdmin(req, res, db)) return;
-    const index = db.points.findIndex((point) => point.id === pointMatch[1]);
-    if (index === -1) return error(res, 404, "Punto non trovato");
+    if (!await requireAdmin(req, res)) return;
+    const pointId = pointMatch[1];
+    
+    const currentPoint = await db.collection("points").findOne({ id: pointId });
+    if (!currentPoint) return error(res, 404, "Punto non trovato");
+    
     const body = await readBody(req);
     const point = validatePoint(body);
     if (point.error) return error(res, 400, point.error);
-    db.points[index] = { ...db.points[index], ...point.value, updatedAt: new Date().toISOString() };
-    writeDb(db);
-    json(res, 200, { point: db.points[index] });
+    
+    const updatedAt = new Date().toISOString();
+    await db.collection("points").updateOne({ id: pointId }, { $set: { ...point.value, updatedAt } });
+    
+    const updatedPoint = await db.collection("points").findOne({ id: pointId }, { projection: { _id: 0 } });
+    json(res, 200, { point: updatedPoint });
     return;
   }
 
   if (pointMatch && req.method === "DELETE") {
-    if (!requireAdmin(req, res, db)) return;
-    db.points = db.points.filter((point) => point.id !== pointMatch[1]);
-    writeDb(db);
+    if (!await requireAdmin(req, res)) return;
+    await db.collection("points").deleteOne({ id: pointMatch[1] });
     json(res, 200, { ok: true });
     return;
   }
 
   if (req.method === "GET" && pathname === "/api/users") {
-    if (!requireAdmin(req, res, db)) return;
-    json(res, 200, { users: db.users.map((user) => publicUser(user, db)) });
+    if (!await requireAdmin(req, res)) return;
+    const users = await db.collection("users").find().toArray();
+    const publicUsersList = await Promise.all(users.map((user) => publicUser(user)));
+    json(res, 200, { users: publicUsersList });
     return;
   }
 
   const userMatch = pathname.match(/^\/api\/users\/([^/]+)\/(approve|reject)$/);
   if (userMatch && req.method === "POST") {
-    const admin = requireAdmin(req, res, db);
+    const admin = await requireAdmin(req, res);
     if (!admin) return;
-    const user = db.users.find((item) => item.id === userMatch[1]);
+    const userId = userMatch[1];
+    
+    const user = await db.collection("users").findOne({ id: userId });
     if (!user) return error(res, 404, "Utente non trovato");
     if (user.role === "admin") return error(res, 400, "L'admin principale non puo essere modificato qui");
-    user.status = userMatch[2] === "approve" ? "approved" : "rejected";
-    writeDb(db);
-    json(res, 200, { user: publicUser(user, db) });
+    
+    const status = userMatch[2] === "approve" ? "approved" : "rejected";
+    await db.collection("users").updateOne({ id: userId }, { $set: { status } });
+    
+    const updatedUser = await db.collection("users").findOne({ id: userId });
+    json(res, 200, { user: await publicUser(updatedUser) });
     return;
   }
 
@@ -369,8 +396,10 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-ensureDb();
-server.listen(PORT, () => {
-  console.log(`Mappa interattiva pronta: http://localhost:${PORT}`);
-  console.log("Admin iniziale: username admin / password admin123");
+// Inizializziamo il database prima di far partire il server HTTP
+initDb().then(() => {
+  server.listen(PORT, () => {
+    console.log(`Mappa interattiva pronta: http://localhost:${PORT}`);
+    console.log("Admin iniziale: username admin / password admin123");
+  });
 });
